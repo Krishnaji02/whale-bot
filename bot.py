@@ -1,32 +1,31 @@
+import os
 import time
 from web3 import Web3
 from telegram import Bot
 
-def load_env(path="config.env"):
-    env = {}
-    with open(path) as f:
-        for line in f:
-            if line.strip() and not line.startswith("#"):
-                k, v = line.strip().split("=", 1)
-                env[k] = v
-    return env
+def get_env(key):
+    v = os.getenv(key)
+    if v is None:
+        raise RuntimeError(f"Missing env var {key}")
+    return v
 
-cfg = load_env()
+# Load required environment variables
+RPC_WS = get_env("RPC_WS")
+TARGET_WALLETS = [w.lower() for w in get_env("TARGET_WALLETS").split(",")]
+UNISWAP_V2 = Web3.to_checksum_address(get_env("UNISWAP_V2"))
+UNISWAP_V3 = Web3.to_checksum_address(get_env("UNISWAP_V3"))
+UNISWAP_V3_ROUTER2 = Web3.to_checksum_address(get_env("UNISWAP_V3_ROUTER2"))
+TG_BOT_TOKEN = get_env("TG_BOT_TOKEN")
+TG_CHAT_ID = get_env("TG_CHAT_ID")
 
-RPC_WS = cfg["RPC_WS"]
-TARGET_WALLETS = [w.lower() for w in cfg["TARGET_WALLETS"].split(",")]
-UNISWAP_V2 = Web3.to_checksum_address(cfg["UNISWAP_V2"])
-UNISWAP_V3 = Web3.to_checksum_address(cfg["UNISWAP_V3"])
-UNISWAP_V3_ROUTER2 = Web3.to_checksum_address(cfg["UNISWAP_V3_ROUTER2"])
-TG_BOT_TOKEN = cfg["TG_BOT_TOKEN"]
-TG_CHAT_ID = cfg["TG_CHAT_ID"]
-
+# Setup Web3 and Telegram bot
 w3 = Web3(Web3.WebsocketProvider(RPC_WS))
 bot = Bot(token=TG_BOT_TOKEN)
 seen = set()
 
-SIG_SWAP_EXACT_ETH_FOR_TOKENS = "0x7ff36ab5"
-SIG_SWAP_EXACT_TOKENS_FOR_ETH = "0x18cbafe5"
+# Swap method signatures
+SIG_SWAP_EXACT_ETH_FOR_TOKENS = "0x7ff36ab5"  # buy (ETH -> token)
+SIG_SWAP_EXACT_TOKENS_FOR_ETH = "0x18cbafe5"  # sell (token -> ETH supporting fee)
 
 def send_telegram(text):
     try:
