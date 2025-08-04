@@ -16,6 +16,29 @@ def get_env(key: str, required=True):
         raise RuntimeError(f"Missing environment variable: {key}")
     return v.strip() if isinstance(v, str) else v
 
+def parse_decimal_env(key, default):
+    raw = os.getenv(key, default)
+    if isinstance(raw, str):
+        cleaned = raw.replace("$", "").replace(",", "").strip()
+    else:
+        cleaned = str(raw)
+    try:
+        return Decimal(cleaned)
+    except Exception:
+        print(f"Warning: invalid {key}='{raw}', falling back to {default}")
+        return Decimal(default)
+
+def parse_int_env(key, default):
+    raw = os.getenv(key, default)
+    if isinstance(raw, str):
+        cleaned = "".join(ch for ch in raw if ch.isdigit())
+    else:
+        cleaned = str(raw)
+    if cleaned == "":
+        print(f"Warning: invalid {key}='{raw}', falling back to {default}")
+        return int(default)
+    return int(cleaned)
+
 # Core environment variables (must exist)
 RPC_WS = get_env("RPC_WS")
 RPC_HTTP = os.getenv("RPC_HTTP", "")
@@ -26,9 +49,11 @@ MY_ADDRESS = to_checksum_address(get_env("MY_ADDRESS"))
 MY_PRIVATE_KEY = get_env("MY_PRIVATE_KEY")
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
-BUY_USD = Decimal(os.getenv("BUY_USD", "10"))           # dollar budget per mirrored buy
-SLIPPAGE_BPS = int(os.getenv("SLIPPAGE_BPS", "100"))     # 100 = 1% tolerance
-GAS_MULTIPLIER = Decimal(os.getenv("GAS_MULTIPLIER", "1.0"))  # 1.0 = match whale gas price
+
+# Robust parsing with fallbacks
+BUY_USD = parse_decimal_env("BUY_USD", "10")           # dollar budget per mirrored buy
+SLIPPAGE_BPS = parse_int_env("SLIPPAGE_BPS", "100")     # 100 = 1% tolerance
+GAS_MULTIPLIER = parse_decimal_env("GAS_MULTIPLIER", "1.0")  # 1.0 = match whale gas price
 
 # Build Web3 with fallback
 def build_web3():
