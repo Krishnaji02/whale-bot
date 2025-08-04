@@ -19,7 +19,6 @@ def run_web():
 threading.Thread(target=run_web, daemon=True).start()
 # ---------------------------------------------------
 
-# helper to load env var
 def get_env(name, required=True):
     v = os.getenv(name)
     if required and (v is None or v == ""):
@@ -27,47 +26,44 @@ def get_env(name, required=True):
         sys.exit(1)
     return v
 
-# Telegram alert via HTTP (simpler, avoids extra dependency)
-def telegram_alert(token, chat_id, text):
-    try:
-        import requests
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {"chat_id": chat_id, "text": text}
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print("Telegram send error:", e)
-
-# Load configuration
+# Load config
 RPC_WS = get_env("RPC_WS")
 TARGET_WALLETS_RAW = get_env("TARGET_WALLETS")
 UNISWAP_V2 = get_env("UNISWAP_V2")
 UNISWAP_V3 = get_env("UNISWAP_V3")
 UNISWAP_V3_ROUTER2 = get_env("UNISWAP_V3_ROUTER2")
 WETH = get_env("WETH")
-
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
 
-# Connect to Ethereum
-# Prefer WebsocketProvider; fallback if attribute name differs
+# --- Provider resolution: prefer websocket, fallback to HTTP ---
+provider = None
+# Try modern WebsocketProvider import
 try:
-    provider = Web3.WebsocketProvider(RPC_WS)
-except AttributeError:
-    provider = Web3.LegacyWebsocketProvider(RPC_WS)
+    from web3.providers.websocket import WebsocketProvider
+    provider = WebsocketProvider(RPC_WS)
+except Exception:
+    # Fallback to LegacyWebSocketProvider if available
+    try:
+        from web3.providers.websocket import LegacyWebSocketProvider
+        provider = LegacyWebSocketProvider(RPC_WS)
+    except Exception:
+        # Last fallback to HTTP
+        provider = Web3.HTTPProvider(RPC_WS)
+
 w3 = Web3(provider)
 
 if not w3.is_connected():
     print("ERROR: cannot connect to RPC:", RPC_WS)
     sys.exit(1)
 
-# Normalize/checksum addresses robustly for different web3 versions
+# checksum helper (handles different API names)
 def checksum(addr: str):
     if hasattr(Web3, "to_checksum_address"):
         return Web3.to_checksum_address(addr)
     elif hasattr(Web3, "toChecksumAddress"):
         return Web3.toChecksumAddress(addr)
-    else:
-        return addr  # best effort
+    return addr
 
 TARGET_WALLETS = [checksum(a.strip()).lower() for a in TARGET_WALLETS_RAW.split(",") if a.strip()]
 UNISWAP_V2 = checksum(UNISWAP_V2).lower()
@@ -77,12 +73,21 @@ WETH = checksum(WETH).lower()
 
 print("Starting watcher. Targets:", TARGET_WALLETS)
 print("Routers:", UNISWAP_V2, UNISWAP_V3, UNISWAP_V3_ROUTER2)
+print("Connected to node. Latest block:", w3.eth.block_number)
 
-# Simple method IDs for common swaps
-SIG_SWAP_EXACT_ETH_FOR_TOKENS = "0x7ff36ab5"  # buy (ETH -> token)
-SIG_SWAP_EXACT_TOKENS_FOR_ETH = "0x18cbafe5"  # sell (token -> ETH supporting fee)
-
+# Simple swap detection logic (you can expand later)
+SIG_SWAP_EXACT_ETH_FOR_TOKENS = "0x7ff36ab5"
+SIG_SWAP_EXACT_TOKENS_FOR_ETH = "0x18cbafe5"
 seen = set()
+
+def telegram_alert(token, chat_id, text):
+    try:
+        import requests
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text}
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print("Telegram send error:", e)
 
 def process_block():
     block = w3.eth.get_block("latest", full_transactions=True)
@@ -114,7 +119,6 @@ def process_block():
             telegram_alert(TG_BOT_TOKEN, TG_CHAT_ID, msg)
 
 def main_loop():
-    print("Connected to node. Latest block:", w3.eth.block_number)
     while True:
         try:
             process_block()
