@@ -12,20 +12,24 @@ def get_env(key):
 # Load required environment variables
 RPC_WS = get_env("RPC_WS")
 TARGET_WALLETS = [w.lower() for w in get_env("TARGET_WALLETS").split(",")]
-UNISWAP_V2 = Web3.to_checksum_address(get_env("UNISWAP_V2"))
-UNISWAP_V3 = Web3.to_checksum_address(get_env("UNISWAP_V3"))
-UNISWAP_V3_ROUTER2 = Web3.to_checksum_address(get_env("UNISWAP_V3_ROUTER2"))
+UNISWAP_V2 = Web3.toChecksumAddress(get_env("UNISWAP_V2"))
+UNISWAP_V3 = Web3.toChecksumAddress(get_env("UNISWAP_V3"))
+UNISWAP_V3_ROUTER2 = Web3.toChecksumAddress(get_env("UNISWAP_V3_ROUTER2"))
 TG_BOT_TOKEN = get_env("TG_BOT_TOKEN")
 TG_CHAT_ID = get_env("TG_CHAT_ID")
 
 # Setup Web3 and Telegram bot
-w3 = Web3(Web3.WebsocketProvider(RPC_WS))
+try:
+    w3 = Web3(Web3.WebsocketProvider(RPC_WS))
+except AttributeError:
+    # fallback if provider class name differs (should not be needed with web3==5.31.1)
+    w3 = Web3(Web3.LegacyWebSocketProvider(RPC_WS))
 bot = Bot(token=TG_BOT_TOKEN)
 seen = set()
 
-# Swap method signatures
-SIG_SWAP_EXACT_ETH_FOR_TOKENS = "0x7ff36ab5"  # buy (ETH -> token)
-SIG_SWAP_EXACT_TOKENS_FOR_ETH = "0x18cbafe5"  # sell (token -> ETH supporting fee)
+# Swap method signatures (examples; adjust if needed)
+SIG_SWAP_EXACT_ETH_FOR_TOKENS = "0x7ff36ab5"
+SIG_SWAP_EXACT_TOKENS_FOR_ETH = "0x18cbafe5"
 
 def send_telegram(text):
     try:
@@ -38,7 +42,11 @@ def is_watched_router(addr):
     if not addr:
         return False
     a = addr.lower()
-    return a in {UNISWAP_V2.lower(), UNISWAP_V3.lower(), UNISWAP_V3_ROUTER2.lower()}
+    return a in {
+        UNISWAP_V2.lower(),
+        UNISWAP_V3.lower(),
+        UNISWAP_V3_ROUTER2.lower(),
+    }
 
 def process_latest_block():
     block = w3.eth.get_block("latest", full_transactions=True)
