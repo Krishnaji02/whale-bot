@@ -39,7 +39,7 @@ def parse_int_env(key, default):
         return int(default)
     return int(cleaned)
 
-# Core environment variables (must exist)
+# Core environment variables
 RPC_WS = get_env("RPC_WS")
 RPC_HTTP = os.getenv("RPC_HTTP", "")
 TARGET_WALLETS = [w.lower() for w in get_env("TARGET_WALLETS").split(",") if w.strip()]
@@ -50,23 +50,25 @@ MY_PRIVATE_KEY = get_env("MY_PRIVATE_KEY")
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
 
-# Robust parsing with fallbacks
-BUY_USD = parse_decimal_env("BUY_USD", "10")           # dollar budget per mirrored buy
-SLIPPAGE_BPS = parse_int_env("SLIPPAGE_BPS", "100")     # 100 = 1% tolerance
-GAS_MULTIPLIER = parse_decimal_env("GAS_MULTIPLIER", "1.0")  # 1.0 = match whale gas price
+# Parsed numeric settings
+BUY_USD = parse_decimal_env("BUY_USD", "10")           # dollars per mirrored buy
+SLIPPAGE_BPS = parse_int_env("SLIPPAGE_BPS", "100")     # 100 = 1%
+GAS_MULTIPLIER = parse_decimal_env("GAS_MULTIPLIER", "1.0")  # multiplier on whale gas price
 
-# Build Web3 with fallback
+# Build Web3 with websocket preferred, fallback to HTTP
 def build_web3():
     try:
-        from web3.providers.websocket import WebsocketProvider
-        w3 = Web3(WebsocketProvider(RPC_WS))
+        w3 = Web3(Web3.LegacyWebSocketProvider(RPC_WS))
         if w3.is_connected():
-            print("Connected via WebSocket")
+            print("Connected via WebSocket (legacy)")
             return w3
         else:
             print("WebSocket endpoint refused connection")
+    except AttributeError as e:
+        print("WebSocket provider class missing or failed:", e)
     except Exception as e:
-        print("WebSocketProvider failed:", e)
+        print("WebSocket connection error:", e)
+
     if RPC_HTTP:
         try:
             w3 = Web3(Web3.HTTPProvider(RPC_HTTP))
@@ -77,6 +79,7 @@ def build_web3():
                 print("HTTP fallback refused connection")
         except Exception as e:
             print("HTTP fallback exception:", e)
+
     print("Cannot connect to RPC, retrying in 5s...")
     time.sleep(5)
     return build_web3()
@@ -84,7 +87,7 @@ def build_web3():
 w3 = build_web3()
 print("Web3 connected. Latest block:", w3.eth.block_number)
 
-# Minimal Uniswap V2 ABI pieces needed
+# Minimal Uniswap V2 ABI pieces
 UNISWAP_V2_ABI = [
     {
         "name": "getAmountsOut", "type": "function",
@@ -120,7 +123,7 @@ UNISWAP_V2_ABI = [
     },
 ]
 
-# ERC20 minimal ABI
+# Minimal ERC20 ABI
 ERC20_ABI = [
     {"constant": True, "inputs": [{"name": "owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "", "type": "uint256"}], "type": "function"},
     {"constant": True, "inputs": [{"name": "owner", "type": "address"}, {"name": "spender", "type": "address"}], "name": "allowance", "outputs": [{"name": "", "type": "uint256"}], "type": "function"},
@@ -143,7 +146,7 @@ def telegram_alert(token, chat_id, text):
     except Exception as e:
         print("Telegram error", e)
 
-# Price fetching
+# Price fetching from CoinGecko
 def get_eth_price_usd() -> Decimal:
     try:
         resp = requests.get(
@@ -155,14 +158,14 @@ def get_eth_price_usd() -> Decimal:
         return Decimal(str(data["ethereum"]["usd"]))
     except Exception as e:
         print("CoinGecko fetch failed", e)
-        return Decimal("3700")  # fallback
+        return Decimal("3700")
 
 def eth_for_usd(usd_amount: Decimal) -> int:
     price = get_eth_price_usd()
     eth_amount = usd_amount / price
     return int(eth_amount * Decimal(10**18))  # wei
 
-# Router contract
+# Router contract instance
 router_v2 = w3.eth.contract(address=UNISWAP_V2, abi=UNISWAP_V2_ABI)
 
 # Approval helper
