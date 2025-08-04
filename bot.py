@@ -4,7 +4,6 @@ import threading
 from decimal import Decimal, getcontext
 from flask import Flask, request
 from web3 import Web3
-from eth_abi import decode_abi
 from eth_utils import to_checksum_address
 import requests
 
@@ -27,9 +26,9 @@ MY_ADDRESS = to_checksum_address(get_env("MY_ADDRESS"))
 MY_PRIVATE_KEY = get_env("MY_PRIVATE_KEY")
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
-BUY_USD = Decimal(os.getenv("BUY_USD", "10"))           # e.g. "10" or "20"
-SLIPPAGE_BPS = int(os.getenv("SLIPPAGE_BPS", "100"))     # 100 means 1% tolerance
-GAS_MULTIPLIER = Decimal(os.getenv("GAS_MULTIPLIER", "1.0"))  # "1.0" to match whale gas, "1.05" to pay 5% more
+BUY_USD = Decimal(os.getenv("BUY_USD", "10"))           # dollar budget per mirrored buy
+SLIPPAGE_BPS = int(os.getenv("SLIPPAGE_BPS", "100"))     # 100 = 1% tolerance
+GAS_MULTIPLIER = Decimal(os.getenv("GAS_MULTIPLIER", "1.0"))  # 1.0 = match whale gas price
 
 # Build Web3 with fallback
 def build_web3():
@@ -255,7 +254,10 @@ def process_block():
         if method_id == SIG_SWAP_EXACT_ETH_FOR_TOKENS:
             try:
                 raw = bytes.fromhex(input_data[2:])
-                decoded = decode_abi(["uint256", "address[]", "address", "uint256"], raw[4:])
+                decoded = w3.codec.decode_abi(
+                    ["uint256", "address[]", "address", "uint256"],
+                    raw[4:]
+                )
                 path = decoded[1]
                 if len(path) >= 2:
                     token_address = path[-1]
@@ -266,7 +268,10 @@ def process_block():
         elif method_id == SIG_SWAP_EXACT_TOKENS_FOR_ETH:
             try:
                 raw = bytes.fromhex(input_data[2:])
-                decoded = decode_abi(["uint256", "uint256", "address[]", "address", "uint256"], raw[4:])
+                decoded = w3.codec.decode_abi(
+                    ["uint256", "uint256", "address[]", "address", "uint256"],
+                    raw[4:]
+                )
                 path = decoded[2]
                 if len(path) >= 2:
                     token_address = path[0]
